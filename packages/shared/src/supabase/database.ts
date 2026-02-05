@@ -241,6 +241,18 @@ export interface Database {
         };
         Returns: string;
       };
+      delete_sale_with_items: {
+        Args: {
+          p_sale_id: string;
+        };
+        Returns: undefined;
+      };
+      delete_sale_item: {
+        Args: {
+          p_sale_item_id: string;
+        };
+        Returns: string;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
