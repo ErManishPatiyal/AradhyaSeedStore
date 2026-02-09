@@ -305,3 +305,36 @@ export async function createSale(
   void balanceAmount;
   return data;
 }
+
+/**
+ * Deletes a sale atomically via Postgres RPC.
+ * The DB function reverts stock quantities and logs restock movements.
+ */
+export async function deleteSale(
+  client: TypedSupabaseClient,
+  saleId: string
+): Promise<void> {
+  const { error } = await client.rpc("delete_sale_with_items", {
+    p_sale_id: saleId,
+  });
+
+  if (error) throw error;
+}
+
+/**
+ * Deletes a single line item atomically via Postgres RPC.
+ * The DB function reverts stock, recomputes sale totals, and refuses
+ * to remove the last item on a sale. Returns the sale id.
+ */
+export async function deleteSaleItem(
+  client: TypedSupabaseClient,
+  saleItemId: string
+): Promise<string> {
+  const { data, error } = await client.rpc("delete_sale_item", {
+    p_sale_item_id: saleItemId,
+  });
+
+  if (error) throw error;
+  if (!data) throw new Error("delete_sale_item returned no sale id");
+  return data;
+}

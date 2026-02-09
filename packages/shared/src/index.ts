@@ -49,6 +49,8 @@ export {
   getSalesByDateRange,
   validateSaleDateRange,
   createSale,
+  deleteSale,
+  deleteSaleItem,
 } from "./api";
 
 export { signInWithPassword, signOut, getSession } from "./api/auth";
