@@ -14,11 +14,13 @@ import {
 } from "@aradhya/shared";
 import { getSupabaseClient } from "@/lib/supabase";
 
-const emptyForm: ProductInsert = {
+type ProductFormState = Omit<ProductInsert, "stock_qty"> & { stock_qty: number | "" };
+
+const emptyForm: ProductFormState = {
   name: "",
   hsn_code: "",
   unit: "kg",
-  stock_qty: 0,
+  stock_qty: "",
   mfg_date: null,
   exp_date: null,
 };
@@ -28,13 +30,22 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleDateString("en-IN");
 }
 
+function isExpiringWithinMonths(expDate: string | null, months: number) {
+  if (!expDate) return false;
+  const exp = new Date(expDate);
+  if (Number.isNaN(exp.getTime())) return false;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() + months);
+  return exp <= cutoff;
+}
+
 export default function StockPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<ProductInsert>(emptyForm);
+  const [form, setForm] = useState<ProductFormState>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
   const loadProducts = useCallback(async () => {
@@ -98,10 +109,14 @@ export default function StockPage() {
     setSubmitting(true);
     try {
       const client = getSupabaseClient();
+      const payload: ProductInsert = {
+        ...form,
+        stock_qty: Number(form.stock_qty),
+      };
       if (editingId) {
-        await updateProduct(client, editingId, form);
+        await updateProduct(client, editingId, payload);
       } else {
-        await createProduct(client, form);
+        await createProduct(client, payload);
       }
       closeForm();
       await loadProducts();
@@ -170,7 +185,9 @@ export default function StockPage() {
               step="0.001"
               placeholder="Stock quantity"
               value={form.stock_qty}
-              onChange={(e) => setForm({ ...form, stock_qty: Number(e.target.value) })}
+              onChange={(e) =>
+                setForm({ ...form, stock_qty: e.target.value as number | "" })
+              }
               className="rounded-md border border-green-300 px-3 py-2 text-sm"
               required
             />
@@ -242,7 +259,14 @@ export default function StockPage() {
               </tr>
             ) : (
               products.map((product, index) => (
-                <tr key={product.id} className="border-b border-green-100">
+                <tr
+                  key={product.id}
+                  className={
+                    isExpiringWithinMonths(product.exp_date, 6)
+                      ? "border-b border-red-200 bg-red-50"
+                      : "border-b border-green-100"
+                  }
+                >
                   <td className="px-4 py-3">{index + 1}</td>
                   <td className="px-4 py-3 font-medium">{product.name}</td>
                   <td className="px-4 py-3">{product.hsn_code}</td>
