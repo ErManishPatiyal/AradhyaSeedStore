@@ -11,9 +11,9 @@
 
 | Layer | Status | Notes |
 |-------|--------|-------|
-| Supabase schema | Done | `001_initial_schema.sql` + `002_rpc_grants_and_seed.sql` |
+| Supabase schema | Done | `001`–`003` migrations (see below) |
 | `@aradhya/shared` | Done | Types, API, auth helpers, invoice math |
-| `@aradhya/pwa` | **Functional** | Auth, stock CRUD, customers, sales, dashboard |
+| `@aradhya/pwa` | **Functional** | Auth, stock CRUD, customers + payments, sales, dashboard |
 | `@aradhya/mobile` | Placeholder | UI shell only; no data wiring or auth |
 
 ```mermaid
@@ -42,6 +42,7 @@ flowchart TB
 | Product/stock CRUD | Yes | No |
 | Sale creation with line items, total/received/balance | Yes | No |
 | Customer list with outstanding balance | Yes | No |
+| Customer payment received + history | Yes | No |
 | Auto stock deduction on sale | Yes (via RPC) | No |
 | Owner login (Supabase Auth) | Yes | No |
 
@@ -55,6 +56,7 @@ flowchart TB
 |------|---------|
 | [`supabase/migrations/001_initial_schema.sql`](./supabase/migrations/001_initial_schema.sql) | Tables, RLS, `create_sale_with_items` RPC |
 | [`supabase/migrations/002_rpc_grants_and_seed.sql`](./supabase/migrations/002_rpc_grants_and_seed.sql) | `GRANT EXECUTE` on RPC + seed data |
+| [`supabase/migrations/003_customer_payments.sql`](./supabase/migrations/003_customer_payments.sql) | `customer_payments` ledger table + RLS |
 
 ### Tables
 
@@ -63,6 +65,17 @@ flowchart TB
 - `sales` — invoice header (total, received, balance)
 - `sale_items` — line items per sale
 - `stock_movements` — audit trail (auto-written on sale)
+- `customer_payments` — repayments received from customers (amount, date, notes)
+
+### Outstanding balance
+
+Customer outstanding is **computed**, not stored on `customers`:
+
+```
+outstanding = max(0, SUM(sales.balance_amount) − SUM(customer_payments.amount))
+```
+
+Sale-time `received_amount` is unchanged; later repayments are separate ledger rows in `customer_payments`.
 
 ### Security
 
@@ -82,7 +95,7 @@ Seed is idempotent: inserts only when tables are empty.
 
 ### Manual setup (required)
 
-1. Create Supabase project and run both migrations
+1. Create Supabase project and run migrations `001`, `002`, and `003`
 2. Create store owner in **Authentication → Users** (email/password)
 3. Set env vars (see [Environment](#environment))
 
@@ -94,7 +107,7 @@ Single source of truth for domain logic. Both clients import from here.
 
 ### Types
 
-`Product`, `Customer`, `CustomerWithBalance`, `Sale`, `SaleItem`, `CreateSaleInput`, `StockMovement`, `STORE_INFO`
+`Product`, `Customer`, `CustomerWithBalance`, `CustomerPayment`, `Sale`, `SaleItem`, `CreateSaleInput`, `StockMovement`, `STORE_INFO`
 
 ### API — Products
 
@@ -111,7 +124,9 @@ Single source of truth for domain logic. Both clients import from here.
 | Function | Description |
 |----------|-------------|
 | `getCustomers` | List all customers |
-| `getCustomersWithBalance` | Customers + summed `balance_amount` from sales |
+| `getCustomersWithBalance` | Customers + outstanding (`sale balances − payments`) |
+| `getCustomerPayments` | Payment history for one customer (newest first) |
+| `recordCustomerPayment` | Record repayment; rejects if amount > outstanding |
 | `createCustomer` | Insert customer |
 | `updateCustomer` | Update customer |
 | `deleteCustomer` | Delete customer (fails if referenced by sales) |
@@ -150,7 +165,7 @@ Single source of truth for domain logic. Both clients import from here.
 | `/login` | Owner login | Functional |
 | `/` | Dashboard | Functional — live stats + quick links |
 | `/stock` | Stock register | Functional — list, add, edit |
-| `/customers` | Customers | Functional — list with balance, add, edit |
+| `/customers` | Customers | Functional — list with balance, add/edit, record payments |
 | `/sales` | New sale | Functional — line items, totals, save |
 
 ### Auth flow
@@ -183,8 +198,11 @@ Single source of truth for domain logic. Both clients import from here.
 ### Customers (`/customers`)
 
 - Table: Name, Address, Phone, Outstanding Balance, Edit
-- Add/edit form for name, address, phone
-- Outstanding balance from `getCustomersWithBalance` (aggregates sale balances)
+- Add/edit form for name, address, phone (Edit scrolls panel into view)
+- **Record Payment** (when editing a customer with outstanding balance): amount, date, optional notes
+- **Payment History** table for the selected customer
+- Outstanding balance from `getCustomersWithBalance` (sale balances minus recorded payments)
+- Validation: payment amount must be > 0 and ≤ current outstanding
 
 ### Sales (`/sales`)
 
@@ -266,7 +284,7 @@ Mobile env file: `packages/mobile/.env` (not created yet)
 
 Use this to confirm Phase 2 is working end-to-end on the **web app**:
 
-- [ ] Migrations `001` and `002` applied in Supabase SQL Editor
+- [ ] Migrations `001`, `002`, and `003` applied in Supabase SQL Editor
 - [ ] Owner account created in Supabase Auth
 - [ ] `packages/pwa/.env.local` has valid Supabase URL + anon key
 - [ ] `pnpm --filter @aradhya/pwa dev` starts without errors
@@ -276,6 +294,8 @@ Use this to confirm Phase 2 is working end-to-end on the **web app**:
 - [ ] Customers page shows seed customers with ₹0.00 balance
 - [ ] Add product and customer → appear in lists
 - [ ] Create sale with partial payment → customer balance updates, stock decreases
+- [ ] Edit customer → Record Payment → outstanding decreases, payment appears in history
+- [ ] Payment amount greater than outstanding → rejected with error
 - [ ] Sale with qty > stock → rejected with error
 - [ ] Logout → redirected to login, data inaccessible
 
@@ -318,13 +338,14 @@ From [README.md](./README.md):
 ### New / updated — database
 
 - `supabase/migrations/002_rpc_grants_and_seed.sql`
+- `supabase/migrations/003_customer_payments.sql`
 
 ### New / updated — shared
 
 - `packages/shared/src/api/auth.ts`
-- `packages/shared/src/api/index.ts` (balance, deletes)
-- `packages/shared/src/types/index.ts` (`CustomerWithBalance`)
-- `packages/shared/src/supabase/database.ts` (Relationships for supabase-js 2.x)
+- `packages/shared/src/api/index.ts` (balance, deletes, customer payments)
+- `packages/shared/src/types/index.ts` (`CustomerWithBalance`, `CustomerPayment`)
+- `packages/shared/src/supabase/database.ts` (Relationships for supabase-js 2.x, `customer_payments`)
 
 ### New / updated — PWA
 
@@ -333,7 +354,7 @@ From [README.md](./README.md):
 - `packages/pwa/src/components/NavBar.tsx` (logout, active link)
 - `packages/pwa/src/app/page.tsx` (dashboard stats)
 - `packages/pwa/src/app/stock/page.tsx`
-- `packages/pwa/src/app/customers/page.tsx`
+- `packages/pwa/src/app/customers/page.tsx` (edit, record payment, payment history)
 - `packages/pwa/src/app/sales/page.tsx`
 - `packages/pwa/src/app/layout.tsx` (AuthProvider wrapper)
 
