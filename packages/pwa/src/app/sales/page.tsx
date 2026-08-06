@@ -22,17 +22,24 @@ interface LineItemRow {
   key: string;
   product_id: string;
   hsn_code: string;
-  quantity: number;
-  rate: number;
+  quantity: number | "";
+  rate: number | "";
+}
+
+let lineItemKeyCounter = 0;
+
+function nextLineItemKey(): string {
+  lineItemKeyCounter += 1;
+  return `${Date.now()}-${lineItemKeyCounter}`;
 }
 
 function emptyLineItem(): LineItemRow {
   return {
-    key: crypto.randomUUID(),
+    key: nextLineItemKey(),
     product_id: "",
     hsn_code: "",
-    quantity: 1,
-    rate: 0,
+    quantity: "",
+    rate: "",
   };
 }
 
@@ -79,12 +86,12 @@ export default function SalesPage() {
   const saleItems: SaleItemInput[] = useMemo(
     () =>
       lineItems
-        .filter((item) => item.product_id && item.quantity > 0)
+        .filter((item) => item.product_id && Number(item.quantity) > 0)
         .map((item) => ({
           product_id: item.product_id,
           hsn_code: item.hsn_code,
-          quantity: item.quantity,
-          rate: item.rate,
+          quantity: Number(item.quantity),
+          rate: Number(item.rate),
         })),
     [lineItems]
   );
@@ -249,7 +256,7 @@ export default function SalesPage() {
             {lineItems.map((item) => {
               const product = products.find((p) => p.id === item.product_id);
               const amount = item.product_id
-                ? calcLineAmount(item.quantity, item.rate)
+                ? calcLineAmount(Number(item.quantity), Number(item.rate))
                 : 0;
 
               return (
@@ -277,7 +284,7 @@ export default function SalesPage() {
                       step="0.001"
                       value={item.quantity}
                       onChange={(e) =>
-                        updateLineItem(item.key, { quantity: Number(e.target.value) })
+                        updateLineItem(item.key, { quantity: e.target.value as number | "" })
                       }
                       className="w-24 rounded-md border border-green-300 px-2 py-1.5"
                       required
@@ -295,7 +302,7 @@ export default function SalesPage() {
                       step="0.01"
                       value={item.rate}
                       onChange={(e) =>
-                        updateLineItem(item.key, { rate: Number(e.target.value) })
+                        updateLineItem(item.key, { rate: e.target.value as number | "" })
                       }
                       className="w-28 rounded-md border border-green-300 px-2 py-1.5"
                       required

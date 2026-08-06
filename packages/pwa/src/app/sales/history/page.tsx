@@ -5,8 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   formatINR,
   formatUnit,
+  getCustomers,
   getSalesByDateRange,
   validateSaleDateRange,
+  type Customer,
   type SaleWithDetails,
 } from "@aradhya/shared";
 import { getSupabaseClient } from "@/lib/supabase";
@@ -24,6 +26,8 @@ export default function SalesHistoryPage() {
   const [fromDate, setFromDate] = useState(todayIsoDate);
   const [toDate, setToDate] = useState(todayIsoDate);
   const [sales, setSales] = useState<SaleWithDetails[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerId, setCustomerId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
@@ -58,9 +62,20 @@ export default function SalesHistoryPage() {
     loadSales();
   }, [loadSales]);
 
+  useEffect(() => {
+    getCustomers(getSupabaseClient())
+      .then(setCustomers)
+      .catch(() => {});
+  }, []);
+
+  const filteredSales = useMemo(
+    () => (customerId ? sales.filter((sale) => sale.customer?.id === customerId) : sales),
+    [sales, customerId]
+  );
+
   const summary = useMemo(
     () =>
-      sales.reduce(
+      filteredSales.reduce(
         (acc, sale) => ({
           count: acc.count + 1,
           total: acc.total + sale.total_amount,
@@ -69,7 +84,7 @@ export default function SalesHistoryPage() {
         }),
         { count: 0, total: 0, received: 0, balance: 0 }
       ),
-    [sales]
+    [filteredSales]
   );
 
   function setToday() {
@@ -115,6 +130,21 @@ export default function SalesHistoryPage() {
               onChange={(e) => setToDate(e.target.value)}
               className="rounded-md border border-green-300 px-3 py-2 text-sm"
             />
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-green-800">
+            Customer
+            <select
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              className="rounded-md border border-green-300 px-3 py-2 text-sm"
+            >
+              <option value="">All customers</option>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.name}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="flex gap-2">
             <button
@@ -194,8 +224,14 @@ export default function SalesHistoryPage() {
                   No sales found for this date range.
                 </td>
               </tr>
+            ) : filteredSales.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-8 text-center text-green-600">
+                  No sales found for this customer.
+                </td>
+              </tr>
             ) : (
-              sales.flatMap((sale) => {
+              filteredSales.flatMap((sale) => {
                 const isExpanded = expandedSaleId === sale.id;
                 const headerRow = (
                   <tr key={sale.id} className="border-b border-green-100">
