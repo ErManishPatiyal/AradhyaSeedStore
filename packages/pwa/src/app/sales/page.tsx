@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   calcBalance,
@@ -173,7 +174,15 @@ export default function SalesPage() {
 
   return (
     <form onSubmit={handleSubmit}>
-      <h2 className="mb-4 text-2xl font-bold text-green-900">New Sale</h2>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-green-900">New Sale</h2>
+        <Link
+          href="/sales/history"
+          className="rounded-md border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50"
+        >
+          View sales
+        </Link>
+      </div>
 
       {error && (
         <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

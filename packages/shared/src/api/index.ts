@@ -3,14 +3,17 @@ import type {
   CreateSaleInput,
   Customer,
   CustomerInsert,
+  CustomerPayment,
+  CustomerPaymentInsert,
   CustomerUpdate,
   CustomerWithBalance,
   Product,
   ProductInsert,
   ProductUpdate,
   Sale,
+  SaleWithDetails,
 } from "../types";
-import { calcBalance, calcLineAmount, calcTotalAmount } from "../utils/calculations";
+import { calcBalance, calcLineAmount, calcTotalAmount, roundCurrency } from "../utils/calculations";
 
 // ─── Products ───────────────────────────────────────────────────────────────
 
@@ -114,7 +117,11 @@ export async function deleteCustomer(client: TypedSupabaseClient, id: string): P
 export async function getCustomersWithBalance(
   client: TypedSupabaseClient
 ): Promise<CustomerWithBalance[]> {
-  const [customers, sales] = await Promise.all([getCustomers(client), getSales(client)]);
+  const [customers, sales, payments] = await Promise.all([
+    getCustomers(client),
+    getSales(client),
+    getAllCustomerPayments(client),
+  ]);
 
   const balanceByCustomer = new Map<string, number>();
   for (const sale of sales) {
@@ -122,10 +129,81 @@ export async function getCustomersWithBalance(
     balanceByCustomer.set(sale.customer_id, current + sale.balance_amount);
   }
 
-  return customers.map((customer) => ({
-    ...customer,
-    outstanding_balance: balanceByCustomer.get(customer.id) ?? 0,
-  }));
+  const paymentsByCustomer = new Map<string, number>();
+  for (const payment of payments) {
+    const current = paymentsByCustomer.get(payment.customer_id) ?? 0;
+    paymentsByCustomer.set(payment.customer_id, current + payment.amount);
+  }
+
+  return customers.map((customer) => {
+    const saleBalance = balanceByCustomer.get(customer.id) ?? 0;
+    const paidAmount = paymentsByCustomer.get(customer.id) ?? 0;
+    const outstanding = Math.max(0, roundCurrency(saleBalance - paidAmount));
+
+    return {
+      ...customer,
+      outstanding_balance: outstanding,
+    };
+  });
+}
+
+// ─── Customer Payments ────────────────────────────────────────────────────────
+
+async function getAllCustomerPayments(
+  client: TypedSupabaseClient
+): Promise<CustomerPayment[]> {
+  const { data, error } = await client
+    .from("customer_payments")
+    .select("*")
+    .order("payment_date", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getCustomerPayments(
+  client: TypedSupabaseClient,
+  customerId: string
+): Promise<CustomerPayment[]> {
+  const { data, error } = await client
+    .from("customer_payments")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("payment_date", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function recordCustomerPayment(
+  client: TypedSupabaseClient,
+  payment: CustomerPaymentInsert
+): Promise<CustomerPayment> {
+  if (payment.amount <= 0) {
+    throw new Error("Payment amount must be greater than zero");
+  }
+
+  const customersWithBalance = await getCustomersWithBalance(client);
+  const customer = customersWithBalance.find((c) => c.id === payment.customer_id);
+
+  if (!customer) {
+    throw new Error("Customer not found");
+  }
+
+  if (payment.amount > customer.outstanding_balance) {
+    throw new Error(
+      `Payment amount cannot exceed outstanding balance of ${customer.outstanding_balance}`
+    );
+  }
+
+  const { data, error } = await client
+    .from("customer_payments")
+    .insert(payment)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 // ─── Sales ────────────────────────────────────────────────────────────────────
@@ -138,6 +216,60 @@ export async function getSales(client: TypedSupabaseClient): Promise<Sale[]> {
 
   if (error) throw error;
   return data ?? [];
+}
+
+const MAX_SALE_DATE_RANGE_DAYS = 31;
+
+function parseIsoDate(isoDate: string): Date {
+  const parts = isoDate.split("-").map(Number);
+  const year = parts[0] ?? 0;
+  const month = parts[1] ?? 1;
+  const day = parts[2] ?? 1;
+  return new Date(year, month - 1, day);
+}
+
+function daysBetweenInclusive(fromDate: string, toDate: string): number {
+  const from = parseIsoDate(fromDate);
+  const to = parseIsoDate(toDate);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.floor((to.getTime() - from.getTime()) / msPerDay) + 1;
+}
+
+export function validateSaleDateRange(fromDate: string, toDate: string): void {
+  if (fromDate > toDate) {
+    throw new Error("From date must be on or before to date");
+  }
+  if (daysBetweenInclusive(fromDate, toDate) > MAX_SALE_DATE_RANGE_DAYS) {
+    throw new Error(`Date range cannot exceed ${MAX_SALE_DATE_RANGE_DAYS} days`);
+  }
+}
+
+export async function getSalesByDateRange(
+  client: TypedSupabaseClient,
+  fromDate: string,
+  toDate: string
+): Promise<SaleWithDetails[]> {
+  validateSaleDateRange(fromDate, toDate);
+
+  const { data, error } = await client
+    .from("sales")
+    .select(
+      `
+      *,
+      customer:customers(id, name),
+      items:sale_items(
+        *,
+        product:products(id, name, unit)
+      )
+    `
+    )
+    .gte("sale_date", fromDate)
+    .lte("sale_date", toDate)
+    .order("sale_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as SaleWithDetails[];
 }
 
 /**

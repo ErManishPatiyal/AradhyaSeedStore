@@ -33,6 +33,18 @@ export interface CustomerWithBalance extends Customer {
   outstanding_balance: number;
 }
 
+/** Payment received from a customer against outstanding balance. */
+export interface CustomerPayment {
+  id: string;
+  customer_id: string;
+  amount: number;
+  payment_date: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export type CustomerPaymentInsert = Omit<CustomerPayment, "id" | "created_at">;
+
 /** Sale invoice header. */
 export interface Sale {
   id: string;
@@ -69,6 +81,17 @@ export interface CreateSaleInput {
   sale_date: string;
   items: SaleItemInput[];
   received_amount: number;
+}
+
+/** Line item with joined product details for sale history. */
+export interface SaleItemWithProduct extends SaleItem {
+  product: Pick<Product, "id" | "name" | "unit">;
+}
+
+/** Sale header with customer and line items for history listing. */
+export interface SaleWithDetails extends Sale {
+  customer: Pick<Customer, "id" | "name">;
+  items: SaleItemWithProduct[];
 }
 
 /** Stock movement audit trail. */

@@ -35,19 +35,25 @@ export function NavBar() {
         {!isLoginPage && (
           <div className="flex items-center gap-2">
             <nav className="flex gap-1">
-              {navItems.map((item) => (
+              {navItems.map((item) => {
+                const isActive =
+                  pathname === item.href ||
+                  (item.href === "/sales" && pathname.startsWith("/sales/"));
+
+                return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                    pathname === item.href
+                    isActive
                       ? "bg-green-100 text-green-900"
                       : "text-green-700 hover:bg-green-50"
                   }`}
                 >
                   {item.label}
                 </Link>
-              ))}
+                );
+              })}
             </nav>
             <button
               type="button"

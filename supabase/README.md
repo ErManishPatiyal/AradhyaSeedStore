@@ -18,8 +18,10 @@
 | `sales` | Invoice header (total, received, balance) |
 | `sale_items` | Invoice line items (product, HSN, qty, rate, amount) |
 | `stock_movements` | Audit trail for stock in/out |
+| `customer_payments` | Customer repayments against outstanding balance |
 
 See [migrations/001_initial_schema.sql](./migrations/001_initial_schema.sql) for full DDL.
+For customer payment ledger, also run [migrations/003_customer_payments.sql](./migrations/003_customer_payments.sql).
 
 ## Setup (Dashboard — no CLI required)
 
