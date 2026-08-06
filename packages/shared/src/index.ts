@@ -7,6 +7,7 @@ export type {
   Customer,
   CustomerInsert,
   CustomerUpdate,
+  CustomerWithBalance,
   Sale,
   SaleItem,
   SaleItemInput,
@@ -32,12 +33,17 @@ export {
   getProductById,
   createProduct,
   updateProduct,
+  deleteProduct,
   getCustomers,
+  getCustomersWithBalance,
   createCustomer,
   updateCustomer,
+  deleteCustomer,
   getSales,
   createSale,
 } from "./api";
+
+export { signInWithPassword, signOut, getSession } from "./api/auth";
 
 // Utils
 export {

@@ -1,5 +1,15 @@
+"use client";
+
 import Link from "next/link";
-import { STORE_INFO } from "@aradhya/shared";
+import { useEffect, useState } from "react";
+import {
+  formatINR,
+  getCustomersWithBalance,
+  getProducts,
+  getSales,
+  STORE_INFO,
+} from "@aradhya/shared";
+import { getSupabaseClient } from "@/lib/supabase";
 
 const quickLinks = [
   {
@@ -19,13 +29,74 @@ const quickLinks = [
   },
 ];
 
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function DashboardPage() {
+  const [productCount, setProductCount] = useState(0);
+  const [totalOutstanding, setTotalOutstanding] = useState(0);
+  const [todaySalesCount, setTodaySalesCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const client = getSupabaseClient();
+        const [products, customers, sales] = await Promise.all([
+          getProducts(client),
+          getCustomersWithBalance(client),
+          getSales(client),
+        ]);
+
+        const today = todayIsoDate();
+        setProductCount(products.length);
+        setTotalOutstanding(
+          customers.reduce((sum, customer) => sum + customer.outstanding_balance, 0)
+        );
+        setTodaySalesCount(sales.filter((sale) => sale.sale_date === today).length);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load dashboard stats");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadStats();
+  }, []);
+
   return (
     <div>
       <h2 className="mb-2 text-2xl font-bold text-green-900">Dashboard</h2>
       <p className="mb-6 text-green-700">
         Welcome to {STORE_INFO.name}. Select a module below.
       </p>
+
+      {error && (
+        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      )}
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <div className="rounded-lg border border-green-200 bg-white p-4">
+          <p className="text-sm text-green-600">Products in stock</p>
+          <p className="mt-1 text-2xl font-bold text-green-900">
+            {loading ? "—" : productCount}
+          </p>
+        </div>
+        <div className="rounded-lg border border-green-200 bg-white p-4">
+          <p className="text-sm text-green-600">Total outstanding</p>
+          <p className="mt-1 text-2xl font-bold text-green-900">
+            {loading ? "—" : formatINR(totalOutstanding)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-green-200 bg-white p-4">
+          <p className="text-sm text-green-600">Today&apos;s sales</p>
+          <p className="mt-1 text-2xl font-bold text-green-900">
+            {loading ? "—" : todaySalesCount}
+          </p>
+        </div>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         {quickLinks.map((link) => (
@@ -39,13 +110,6 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
-
-      <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-4">
-        <h3 className="font-semibold text-amber-800">Scaffold Status</h3>
-        <p className="mt-1 text-sm text-amber-700">
-          Phase 1 scaffold — UI placeholders only. Connect Supabase env vars to enable data.
-        </p>
-      </section>
     </div>
   );
 }

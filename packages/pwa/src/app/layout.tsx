@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { AuthProvider } from "@/components/AuthProvider";
 import { NavBar } from "@/components/NavBar";
 import "./globals.css";
 
@@ -23,8 +24,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <NavBar />
-        <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+        <AuthProvider>
+          <NavBar />
+          <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+        </AuthProvider>
       </body>
     </html>
   );

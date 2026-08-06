@@ -28,6 +28,11 @@ export interface Customer {
 export type CustomerInsert = Omit<Customer, "id" | "created_at">;
 export type CustomerUpdate = Partial<CustomerInsert>;
 
+/** Customer with aggregated outstanding balance from sales. */
+export interface CustomerWithBalance extends Customer {
+  outstanding_balance: number;
+}
+
 /** Sale invoice header. */
 export interface Sale {
   id: string;

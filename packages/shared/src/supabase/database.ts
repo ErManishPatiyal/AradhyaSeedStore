@@ -1,6 +1,9 @@
 /**
  * Hand-written Supabase Database types.
  * Replace with `supabase gen types typescript` output once project is live.
+ *
+ * Must match supabase-js GenericSchema: Tables need Relationships;
+ * schema needs Views + Functions.
  */
 export type Json =
   | string
@@ -44,6 +47,7 @@ export interface Database {
           exp_date?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
       customers: {
         Row: {
@@ -67,6 +71,7 @@ export interface Database {
           phone?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
       sales: {
         Row: {
@@ -96,6 +101,15 @@ export interface Database {
           balance_amount?: number;
           created_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "sales_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       sale_items: {
         Row: {
@@ -125,6 +139,22 @@ export interface Database {
           rate?: number;
           amount?: number;
         };
+        Relationships: [
+          {
+            foreignKeyName: "sale_items_sale_id_fkey";
+            columns: ["sale_id"];
+            isOneToOne: false;
+            referencedRelation: "sales";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sale_items_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       stock_movements: {
         Row: {
@@ -154,8 +184,18 @@ export interface Database {
           reference_id?: string | null;
           created_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
+    Views: Record<string, never>;
     Functions: {
       create_sale_with_items: {
         Args: {
@@ -167,5 +207,7 @@ export interface Database {
         Returns: string;
       };
     };
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }

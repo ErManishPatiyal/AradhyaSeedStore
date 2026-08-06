@@ -4,6 +4,7 @@ import type {
   Customer,
   CustomerInsert,
   CustomerUpdate,
+  CustomerWithBalance,
   Product,
   ProductInsert,
   ProductUpdate,
@@ -62,6 +63,11 @@ export async function updateProduct(
   return data;
 }
 
+export async function deleteProduct(client: TypedSupabaseClient, id: string): Promise<void> {
+  const { error } = await client.from("products").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // ─── Customers ────────────────────────────────────────────────────────────────
 
 export async function getCustomers(client: TypedSupabaseClient): Promise<Customer[]> {
@@ -98,6 +104,28 @@ export async function updateCustomer(
 
   if (error) throw error;
   return data;
+}
+
+export async function deleteCustomer(client: TypedSupabaseClient, id: string): Promise<void> {
+  const { error } = await client.from("customers").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function getCustomersWithBalance(
+  client: TypedSupabaseClient
+): Promise<CustomerWithBalance[]> {
+  const [customers, sales] = await Promise.all([getCustomers(client), getSales(client)]);
+
+  const balanceByCustomer = new Map<string, number>();
+  for (const sale of sales) {
+    const current = balanceByCustomer.get(sale.customer_id) ?? 0;
+    balanceByCustomer.set(sale.customer_id, current + sale.balance_amount);
+  }
+
+  return customers.map((customer) => ({
+    ...customer,
+    outstanding_balance: balanceByCustomer.get(customer.id) ?? 0,
+  }));
 }
 
 // ─── Sales ────────────────────────────────────────────────────────────────────
