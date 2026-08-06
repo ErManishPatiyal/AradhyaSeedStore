@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  deleteSale,
+  deleteSaleItem,
   formatINR,
   formatUnit,
   getCustomers,
@@ -31,6 +33,8 @@ export default function SalesHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
   const rangeError = useMemo(() => {
     try {
@@ -95,6 +99,51 @@ export default function SalesHistoryPage() {
 
   function toggleExpanded(saleId: string) {
     setExpandedSaleId((current) => (current === saleId ? null : saleId));
+  }
+
+  async function handleDelete(sale: SaleWithDetails) {
+    const customerName = sale.customer?.name ?? "this sale";
+    const confirmed = window.confirm(
+      `Delete sale for ${customerName} (${formatINR(sale.total_amount)})? ` +
+        "Stock quantities will be restored."
+    );
+    if (!confirmed) return;
+
+    setDeletingId(sale.id);
+    setError(null);
+    try {
+      await deleteSale(getSupabaseClient(), sale.id);
+      await loadSales();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete sale");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleDeleteItem(
+    sale: SaleWithDetails,
+    item: { id: string; product?: { name?: string } | null }
+  ) {
+    const productName = item.product?.name ?? "this item";
+    const confirmed = window.confirm(
+      `Delete ${productName} from this sale? Stock quantity will be restored.`
+    );
+    if (!confirmed) return;
+
+    setDeletingItemId(item.id);
+    setError(null);
+    try {
+      await deleteSaleItem(getSupabaseClient(), item.id);
+      if (sale.items.length - 1 <= 0) {
+        setExpandedSaleId((current) => (current === sale.id ? null : current));
+      }
+      await loadSales();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete item");
+    } finally {
+      setDeletingItemId(null);
+    }
   }
 
   const columns = ["Date", "Customer", "Total", "Received", "Balance", ""];
@@ -241,13 +290,23 @@ export default function SalesHistoryPage() {
                     <td className="px-4 py-3">{formatINR(sale.received_amount)}</td>
                     <td className="px-4 py-3 font-medium">{formatINR(sale.balance_amount)}</td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleExpanded(sale.id)}
-                        className="text-sm font-medium text-green-700 hover:text-green-900"
-                      >
-                        {isExpanded ? "Hide items" : "Show items"}
-                      </button>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(sale.id)}
+                          className="text-sm font-medium text-green-700 hover:text-green-900"
+                        >
+                          {isExpanded ? "Hide items" : "Show items"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(sale)}
+                          disabled={deletingId === sale.id}
+                          className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-60"
+                        >
+                          {deletingId === sale.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -263,8 +322,8 @@ export default function SalesHistoryPage() {
                         <table className="w-full text-left text-sm">
                           <thead className="border-b border-green-200 bg-green-50">
                             <tr>
-                              {["Product", "HSN", "Qty", "Rate", "Amount"].map((col) => (
-                                <th key={col} className="px-3 py-2 font-semibold text-green-800">
+                              {["Product", "HSN", "Qty", "Rate", "Amount", ""].map((col) => (
+                                <th key={col || "actions"} className="px-3 py-2 font-semibold text-green-800">
                                   {col}
                                 </th>
                               ))}
@@ -273,7 +332,7 @@ export default function SalesHistoryPage() {
                           <tbody>
                             {sale.items.length === 0 ? (
                               <tr>
-                                <td colSpan={5} className="px-3 py-4 text-center text-green-600">
+                                <td colSpan={6} className="px-3 py-4 text-center text-green-600">
                                   No line items.
                                 </td>
                               </tr>
@@ -292,6 +351,23 @@ export default function SalesHistoryPage() {
                                   </td>
                                   <td className="px-3 py-2">{formatINR(item.rate)}</td>
                                   <td className="px-3 py-2 font-medium">{formatINR(item.amount)}</td>
+                                  <td className="px-3 py-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteItem(sale, item)}
+                                      disabled={
+                                        deletingItemId === item.id || sale.items.length <= 1
+                                      }
+                                      title={
+                                        sale.items.length <= 1
+                                          ? "Delete the sale to remove the last item"
+                                          : "Remove this item and restore stock"
+                                      }
+                                      className="text-sm font-medium text-red-600 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                      {deletingItemId === item.id ? "Deleting..." : "Delete"}
+                                    </button>
+                                  </td>
                                 </tr>
                               ))
                             )}
